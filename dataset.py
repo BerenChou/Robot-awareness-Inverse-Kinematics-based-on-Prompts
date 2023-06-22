@@ -1,5 +1,4 @@
 from torch.utils.data import Dataset
-from torch.utils.data import DataLoader
 import h5py
 import mmcv
 import os.path as osp
@@ -30,23 +29,24 @@ class TraDataset(Dataset):
         return len(self.trajectories_names_list)
 
 
-if __name__ == '__main__':
-    import ikpy.chain
-    from data.data_generator import rotationMatrixToEulerAngles
-
-    robotic_arm = ikpy.chain.Chain.from_urdf_file('/home/zhouyunlai/RAIKPR/assets/UR5/urdf/ur5_robot.urdf')
-
-    tra_dataset = TraDataset('data/training')
-    train_loader = DataLoader(tra_dataset, batch_size=200, shuffle=True, num_workers=2)
-
-    i = 0
-    for _, (eatv_batch, ja_batch) in enumerate(train_loader):
-        if i == 0:
-            # print(str(eatv_batch.shape) + '  ' + str(ja_batch.shape))
-            # torch.Size([200, 100, 6])  torch.Size([200, 100, 6])
-            transformation_matrix = robotic_arm.forward_kinematics([0] + list(ja_batch[0][99]) + [0])
-            euler_angles = rotationMatrixToEulerAngles(transformation_matrix[:3, :3])
-            translation_vector = transformation_matrix[:3, 3]
-            _eatv = eatv_batch[0][99]
-        i += 1
-    print('共{}个iterations'.format(i))
+# if __name__ == '__main__':
+#     import ikpy.chain
+#     from torch.utils.data import DataLoader
+#     from data.data_generator import rotationMatrixToEulerAngles
+#
+#     robotic_arm = ikpy.chain.Chain.from_urdf_file('/home/zulipeng/zyl/RAIKPR/assets/UR5/urdf/ur5_robot.urdf')
+#
+#     tra_dataset = TraDataset('data/training')
+#     train_loader = DataLoader(tra_dataset, batch_size=200, shuffle=True, num_workers=2)
+#
+#     i = 0
+#     for _, (eatv_batch, ja_batch) in enumerate(train_loader):
+#         if i == 0:
+#             # print(str(eatv_batch.shape) + '  ' + str(ja_batch.shape))
+#             # torch.Size([200, 100, 6])  torch.Size([200, 100, 6])
+#             transformation_matrix = robotic_arm.forward_kinematics([0] + list(ja_batch[0][99]) + [0])
+#             euler_angles = rotationMatrixToEulerAngles(transformation_matrix[:3, :3])
+#             translation_vector = transformation_matrix[:3, 3]
+#             _eatv = eatv_batch[0][99]
+#         i += 1
+#     print('共{}个iterations'.format(i))
