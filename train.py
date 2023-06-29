@@ -10,6 +10,7 @@ from datetime import datetime
 import torch.optim.lr_scheduler as lr_scheduler
 from neighborhood_loss import NeighborhoodLoss
 from contrastive_like_loss import ContrastiveLikeLoss
+# from torch.optim.lr_scheduler import CosineAnnealingLR
 # import matplotlib.pyplot as plt
 # import ikpy.chain
 # from utils.rotation_matrix2euler_angles import rotationMatrixToEulerAngles
@@ -17,117 +18,110 @@ from contrastive_like_loss import ContrastiveLikeLoss
 
 class Args:
     def __init__(self):
-        # training
-        self.batch_size = 512
+        # major hyperparameters
         self.lr = 0.001
-        self.lr_reduce_factor = 0.5
-        self.lr_reduce_patience = 8
-        self.early_stop_patience = 20
-        self.weight_decay = 0.000005
-        self.epochs = 10000
+        self.batch_size = 512
+        self.weight_decay = 0.00005
+
+        # device
+        self.device = torch.device('cuda:1')
 
         # loss
-        self.contrastive_like_loss_temperature = 1.0
-        self.contrastive_like_loss_keep_num = 30
+        self.contrastive_like_loss_weight = 0.0
+        self.contrastive_like_loss_temperature = 2.0
+        self.contrastive_like_loss_keep_num = 50
+
+        self.enable_neighborhood_loss = False
         self.sub_trajectory_length_in_neighborhood_loss = 20
         self.inherent_neighborhood_in_neighborhood_loss = 0.0492
-        self.l1_loss_weight = 1.0
-        self.neighborhood_loss_weight = 0.4
-        self.contrastive_like_loss_weight = 0.4
 
         # model
-        self.num_layers = 4
-        self.embed_dims = 128
-        self.num_heads = 2
-        self.feedforward_channels = 128
-        self.drop_rate = 0.3
-        self.attn_drop_rate = 0.3
-        self.drop_path_rate = 0.3
+        self.num_layers = 8
+        self.embed_dims = 256
+        self.num_heads = 4
+        self.feedforward_channels = 256
+        self.drop_rate = 0.0
+        self.attn_drop_rate = 0.0
+        self.drop_path_rate = 0.0
 
-        # num_workers, seed, device
-        self.num_workers = 16
+        # unchanging hyperparameters
+        self.num_workers = 4
         self.seed = 29
-        self.device = torch.device('cuda:3')
-
-        # data
-        self.training_trajectories_path = 'data/training'
-        self.validation_trajectories_path = 'data/validation'
-        self.trajectory_length = 100
+        self.lr_reduce_factor = 0.5
+        self.lr_reduce_patience = 4
+        self.early_stop_patience = 15
+        self.epochs = 10000
 args = Args()
 
 
 def train(model):
-    logging.info(f'\nArguments:\n'
-                 f'  batch_size: {args.batch_size}\n'
-                 f'  lr: {args.lr}\n'
-                 f'  lr_reduce_factor: {args.lr_reduce_factor}\n'
-                 f'  lr_reduce_patience: {args.lr_reduce_patience}\n'
-                 f'  early_stop_patience: {args.early_stop_patience}\n'
-                 f'  weight_decay: {args.weight_decay}\n'
-                 f'  epochs: {args.epochs}\n\n'
+    logging.info(
+        f'\nArguments:\n'
 
-                 f'  contrastive_like_loss_temperature: {args.contrastive_like_loss_temperature}\n'
-                 f'  contrastive_like_loss_keep_num: {args.contrastive_like_loss_keep_num}\n'
-                 f'  sub_trajectory_length_in_neighborhood_loss: {args.sub_trajectory_length_in_neighborhood_loss}\n'
-                 f'  inherent_neighborhood_in_neighborhood_loss: {args.inherent_neighborhood_in_neighborhood_loss}\n'
-                 f'  l1_loss_weight: {args.l1_loss_weight}\n'
-                 f'  neighborhood_loss_weight: {args.neighborhood_loss_weight}\n'
-                 f'  contrastive_like_loss_weight: {args.contrastive_like_loss_weight}\n\n'
+        f'  lr: {args.lr}\n'
+        f'  batch_size: {args.batch_size}\n'
+        f'  weight_decay: {args.weight_decay}\n\n'
 
-                 f'  model.num_layers: {args.num_layers}\n'
-                 f'  model.embed_dims: {args.embed_dims}\n'
-                 f'  model.num_heads: {args.num_heads}\n'
-                 f'  model.feedforward_channels: {args.feedforward_channels}\n'
-                 f'  model.drop_rate: {args.drop_rate}\n'
-                 f'  model.attn_drop_rate: {args.attn_drop_rate}\n'
-                 f'  model.drop_path_rate: {args.drop_path_rate}\n\n'
+        f'  device: {args.device}\n\n'
 
-                 f'  num_workers: {args.num_workers}\n'
-                 f'  seed: {args.seed}\n'
-                 f'  device: {args.device}\n\n'
+        f'  contrastive_like_loss_weight: {args.contrastive_like_loss_weight}\n'
+        f'  contrastive_like_loss_temperature: {args.contrastive_like_loss_temperature}\n'
+        f'  contrastive_like_loss_keep_num: {args.contrastive_like_loss_keep_num}\n\n'
 
-                 f'  training_trajectories_path: \'{args.training_trajectories_path}\'\n'
-                 f'  validation_trajectories_path: \'{args.validation_trajectories_path}\'\n'
-                 f'  trajectory_length: {args.trajectory_length}\n')
+        f'  enable_neighborhood_loss: {args.enable_neighborhood_loss}\n'
+        f'  sub_trajectory_length_in_neighborhood_loss: {args.sub_trajectory_length_in_neighborhood_loss}\n'
+        f'  inherent_neighborhood_in_neighborhood_loss: {args.inherent_neighborhood_in_neighborhood_loss}\n\n'
 
-    logging.info(f"Number of available GPUs: {torch.cuda.device_count()}")
+        f'  model.num_layers: {args.num_layers}\n'
+        f'  model.embed_dims: {args.embed_dims}\n'
+        f'  model.num_heads: {args.num_heads}\n'
+        f'  model.feedforward_channels: {args.feedforward_channels}\n'
+        f'  model.drop_rate: {args.drop_rate}\n'
+        f'  model.attn_drop_rate: {args.attn_drop_rate}\n'
+        f'  model.drop_path_rate: {args.drop_path_rate}\n\n'
 
-    training_tra_dataset = TraDataset(args.training_trajectories_path)
-    logging.info(f'Num of training trajectories: {len(training_tra_dataset) // 1000}K.')
-    training_tra_dataloader = DataLoader(training_tra_dataset, batch_size=args.batch_size,
-                                         shuffle=True, num_workers=args.num_workers, drop_last=True)
+        f'  num_workers: {args.num_workers}\n'
+        f'  seed: {args.seed}\n'
+        f'  lr_reduce_factor: {args.lr_reduce_factor}\n'
+        f'  lr_reduce_patience: {args.lr_reduce_patience}\n'
+        f'  early_stop_patience: {args.early_stop_patience}\n'
+        f'  epochs: {args.epochs}\n\n'
 
-    validation_tra_dataset = TraDataset(args.validation_trajectories_path)
-    logging.info(f'Num of validation trajectories: {len(validation_tra_dataset) // 1000}K.\n')
-    validation_tra_dataloader = DataLoader(validation_tra_dataset, batch_size=args.batch_size,
-                                           shuffle=False, num_workers=args.num_workers, drop_last=True)
+        f'  Number of available GPUs: {torch.cuda.device_count()}\n\n')
+
+    training_dataset = TraDataset('data_without_mutation/training/eatvs_npy.npy', 'data_without_mutation/training/jas_npy.npy')
+    logging.info(f'Num of training trajectories: {len(training_dataset) // 1000}K.')
+    training_dataloader = DataLoader(training_dataset, batch_size=args.batch_size, shuffle=True,
+                                     num_workers=args.num_workers, drop_last=True)
+
+    validation_dataset = TraDataset('data_without_mutation/validation/eatvs_npy.npy', 'data_without_mutation/validation/jas_npy.npy')
+    logging.info(f'Num of validation trajectories: {len(validation_dataset) // 1000}K.\n')
+    validation_dataloader = DataLoader(validation_dataset, batch_size=args.batch_size, shuffle=False,
+                                       num_workers=args.num_workers, drop_last=True)
 
     l1_loss_f = nn.L1Loss()
-    neighborhood_loss_f = NeighborhoodLoss(args.sub_trajectory_length_in_neighborhood_loss,
-                                           args.inherent_neighborhood_in_neighborhood_loss)
-    contrastive_like_loss_f = ContrastiveLikeLoss(batch_size=args.batch_size,
-                                                  temperature=args.contrastive_like_loss_temperature,
-                                                  tra_length=args.trajectory_length,
-                                                  keep_num=args.contrastive_like_loss_keep_num,
-                                                  device=args.device)
+    neighborhood_loss_f = NeighborhoodLoss(args.sub_trajectory_length_in_neighborhood_loss, args.inherent_neighborhood_in_neighborhood_loss)
+    contrastive_like_loss_f = ContrastiveLikeLoss(batch_size=args.batch_size, temperature=args.contrastive_like_loss_temperature,
+                                                  tra_length=100, keep_num=args.contrastive_like_loss_keep_num, device=args.device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
-    scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=args.lr_reduce_factor,
-                                               patience=args.lr_reduce_patience)
+    scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=args.lr_reduce_factor, patience=args.lr_reduce_patience)
+    # scheduler = CosineAnnealingLR(optimizer, T_max=10, eta_min=0.000001)
 
-    training_all_epochs_loss = []
-    val_all_epochs_loss = []
-    best_val_loss_per_batch = 5e5
+    # training_all_epochs_loss = []
+    # val_all_epochs_loss = []
+    best_val_l1_loss_per_joint = 5e5
     for epoch in range(args.epochs):
         # ========================================train======================================
         model.train()
 
-        training_one_epoch_total_loss = []  # 包含iteration个per batch loss
-        training_one_epoch_l1_loss = []  # 包含iteration个per batch loss
-        training_one_epoch_contrastive_like_loss = []  # 包含iteration个per batch loss
-        training_one_epoch_neighborhood_loss = []  # 包含iteration个per batch loss
+        training_one_epoch_total_loss = []
+        training_one_epoch_l1_loss = []
+        training_one_epoch_contrastive_like_loss = []
+        training_one_epoch_neighborhood_loss = []
+        # 以上四个list的len均为60000//512
 
-        for _, (eatv_batch, ja_batch) in enumerate(training_tra_dataloader):
+        for _, (eatv_batch, ja_batch) in enumerate(training_dataloader):
             eatv_batch = eatv_batch.to(args.device)
             ja_batch = ja_batch.to(args.device)
 
@@ -137,11 +131,22 @@ def train(model):
             deep_embedding_sequence = model_output[2]
 
             l1_loss = l1_loss_f(pred_ja_batch, ja_batch)
-            contrastive_like_loss = contrastive_like_loss_f(shallow_embedding_sequence, deep_embedding_sequence)
-            neighborhood_loss = neighborhood_loss_f(pred_ja_batch)
+            # L1Loss在每一个值上都求了平均(除以batchSize*100*6), 即mean(sum(abs(pred_ja_batch - ja_batch)))
+            if args.enable_neighborhood_loss and epoch > 50:
+                # start_time = time.time()
+                neighborhood_loss = neighborhood_loss_f(pred_ja_batch)
+                # end_time = time.time()
+                # print(f"运行时间：{end_time - start_time}秒.")
+                neighborhood_loss_dynamic_weight = epoch / 300 if epoch / 300 < 1.0 else 1.0
+            else:
+                neighborhood_loss = 0.0
+                neighborhood_loss_dynamic_weight = 0.0
+            if args.contrastive_like_loss_weight != 0.0:
+                contrastive_like_loss = contrastive_like_loss_f(shallow_embedding_sequence, deep_embedding_sequence)
+            else:
+                contrastive_like_loss = 0.0
 
-            total_loss = args.l1_loss_weight * l1_loss +\
-                         args.neighborhood_loss_weight * neighborhood_loss +\
+            total_loss = l1_loss + neighborhood_loss_dynamic_weight * neighborhood_loss +\
                          args.contrastive_like_loss_weight * contrastive_like_loss
 
             optimizer.zero_grad()
@@ -153,29 +158,29 @@ def train(model):
             training_one_epoch_contrastive_like_loss.append(contrastive_like_loss)
             training_one_epoch_neighborhood_loss.append(neighborhood_loss)
 
-        training_total_loss_per_batch = np.average(training_one_epoch_total_loss)
-        training_l1_loss_per_batch = np.average(training_one_epoch_l1_loss)
-        training_contrastive_like_loss_per_batch = torch.mean(torch.tensor(training_one_epoch_contrastive_like_loss))
-        training_neighborhood_loss_per_batch = torch.mean(torch.tensor(training_one_epoch_neighborhood_loss))
+        training_total_loss = sum(training_one_epoch_total_loss) / len(training_one_epoch_total_loss)
+        training_l1_loss_per_joint = sum(training_one_epoch_l1_loss) / len(training_one_epoch_l1_loss)
+        training_contrastive_like_loss_per_trajectory = sum(training_one_epoch_contrastive_like_loss) / len(training_one_epoch_contrastive_like_loss)
+        training_neighborhood_loss_per_trajectory = sum(training_one_epoch_neighborhood_loss) / len(training_one_epoch_neighborhood_loss)
 
         logging.info(
-            "Epoch {}: total_loss per batch = {:3f}, l1_loss per batch = {:3f}, contrastive_like_loss_per_batch = {:3f}, "
-            "neighborhood_loss_per_batch = {:3f}, lr = {:3f}.".format(
-                epoch, training_total_loss_per_batch, training_l1_loss_per_batch, training_contrastive_like_loss_per_batch,
-                training_neighborhood_loss_per_batch, optimizer.param_groups[0]['lr']
+            "Epoch {}: total_loss = {:3f}, l1_loss per joint = {:3f}, contrastive_like_loss_per_trajectory = {:3f}, "
+            "neighborhood_loss_per_trajectory(dynamic_weight: {:3f}) = {:3f}, lr = {:3f}.".format(
+                epoch, training_total_loss, training_l1_loss_per_joint, training_contrastive_like_loss_per_trajectory,
+                neighborhood_loss_dynamic_weight, training_neighborhood_loss_per_trajectory, optimizer.param_groups[0]['lr']
             )
         )
-        training_all_epochs_loss.append(training_total_loss_per_batch)
+        # training_all_epochs_loss.append(training_total_loss)
 
         # ========================================val========================================
         if epoch % 5 == 0 and epoch > 0:
             with torch.no_grad():
                 model.eval()
-                validation_one_epoch_loss = []  # 包含iteration个per batch loss
+                validation_one_epoch_l1_loss = []  # len为20000//512
                 # all_gt_val_eatv_list = []
                 # all_pred_val_ja_list = []
                 logging.info('Start validation...')
-                for _, (eatv_batch, ja_batch) in enumerate(validation_tra_dataloader):
+                for _, (eatv_batch, ja_batch) in enumerate(validation_dataloader):
                     # all_gt_val_eatv_list.append(eatv_batch)
 
                     eatv_batch = eatv_batch.to(args.device)
@@ -185,15 +190,18 @@ def train(model):
                     # all_pred_val_ja_list.append(pred_ja_batch.cpu())
                     l1_loss = l1_loss_f(pred_ja_batch, ja_batch)
 
-                    validation_one_epoch_loss.append(l1_loss.item())
-                val_loss_per_batch = np.average(validation_one_epoch_loss)
-                logging.info("Epoch {}: validation l1_loss per batch = {:3f}.".format(epoch, val_loss_per_batch))
-                scheduler.step(val_loss_per_batch)
+                    validation_one_epoch_l1_loss.append(l1_loss.item())
+                val_l1_loss_per_joint = sum(validation_one_epoch_l1_loss) / len(validation_one_epoch_l1_loss)
+                logging.info(
+                    "Epoch {}: validation l1_loss per joint = {:3f}, best prior = {:3f}.".format(
+                        epoch, val_l1_loss_per_joint, best_val_l1_loss_per_joint)
+                )
+                scheduler.step(val_l1_loss_per_joint)
 
-                if val_loss_per_batch < best_val_loss_per_batch:
-                    logging.info('New minimal validation l1_loss per batch: {:3f}!'.format(val_loss_per_batch))
-                    best_val_loss_per_batch = val_loss_per_batch
-                    # ckpt_name = 'best_model_loss{:3f}_epoch{}.pth'.format(best_val_loss_per_batch, epoch)
+                if val_l1_loss_per_joint < best_val_l1_loss_per_joint:
+                    logging.info('New minimal validation l1_loss per joint: {:3f}!'.format(val_l1_loss_per_joint))
+                    best_val_l1_loss_per_joint = val_l1_loss_per_joint
+                    # ckpt_name = 'best_model_loss{:3f}_epoch{}.pth'.format(best_val_l1_loss_per_joint, epoch)
                     # torch.save(model, 'saved_ckpt/' + ckpt_name)
                     args.early_stop_patience = 20
 
@@ -213,7 +221,7 @@ def train(model):
                     # logging.info('**********The average error (Euclidean distance) of each translation vector '
                     #       'in the validation set is {}.**********'.format(total_translation_vectors_eud / all_gt_eatv.shape[0]))
 
-                val_all_epochs_loss.append(val_loss_per_batch)
+                # val_all_epochs_loss.append(val_l1_loss_per_joint)
                 args.early_stop_patience -= 1
                 logging.info('Validation finished...\n')
                 if args.early_stop_patience == 0:
@@ -254,7 +262,7 @@ if __name__ == '__main__':
     logging.basicConfig(filename='training_' + str(datetime.now())[:16] + '.log',
                         level=logging.INFO, format='%(asctime)s: %(message)s', datefmt='%Y-%m-%d %H:%M')
 
-    ik_transformer = IKTransformer(tra_length=args.trajectory_length, num_layers=args.num_layers,
+    ik_transformer = IKTransformer(tra_length=100, num_layers=args.num_layers,
                                    embed_dims=args.embed_dims, num_heads=args.num_heads,
                                    feedforward_channels=args.feedforward_channels,
                                    drop_rate=args.drop_rate, attn_drop_rate=args.attn_drop_rate,

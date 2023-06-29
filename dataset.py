@@ -1,32 +1,42 @@
 from torch.utils.data import Dataset
-import h5py
-import mmcv
-import os.path as osp
 import torch
+import numpy as np
 
 
 class TraDataset(Dataset):
-    def __init__(self, trajectories_path):
-        """
-        Args:
-            trajectories_path: 存放轨迹文件的路径
-        """
-        self.trajectories_path = trajectories_path
-
-        self.trajectories_names_list = []
-        for trajectory_name in mmcv.scandir(self.trajectories_path, '.hdf5'):
-            self.trajectories_names_list.append(trajectory_name)
+    def __init__(self, eatvs_npy_path, jas_npy_path):
+        self.eatvs_npy = torch.from_numpy(np.load(eatvs_npy_path).astype(np.float32))
+        self.jas_npy = torch.from_numpy(np.load(jas_npy_path).astype(np.float32))
 
     def __getitem__(self, index):
-        trajectory = h5py.File(osp.join(self.trajectories_path, self.trajectories_names_list[index]), 'r')
-        # eatv: euler angles & translation vectors
-        # ja: joint angles
-        eatv = torch.Tensor(trajectory.get('results')[:])  # torch.Size([100, 6])
-        ja = torch.Tensor(trajectory.get('inputs')[:])  # torch.Size([100, 6])
-        return eatv, ja
+        return self.eatvs_npy[index], self.jas_npy[index]
 
     def __len__(self):
-        return len(self.trajectories_names_list)
+        return self.eatvs_npy.shape[0]
+
+
+# class TraDataset(Dataset):
+#     def __init__(self, trajectories_path):
+#         """
+#         Args:
+#             trajectories_path: 存放轨迹文件的路径
+#         """
+#         self.trajectories_path = trajectories_path
+#
+#         self.trajectories_names_list = []
+#         for trajectory_name in mmcv.scandir(self.trajectories_path, '.hdf5'):
+#             self.trajectories_names_list.append(trajectory_name)
+#
+#     def __getitem__(self, index):
+#         trajectory = h5py.File(osp.join(self.trajectories_path, self.trajectories_names_list[index]), 'r')
+#         # eatv: euler angles & translation vectors
+#         # ja: joint angles
+#         eatv = torch.Tensor(trajectory.get('results')[:])  # torch.Size([100, 6])
+#         ja = torch.Tensor(trajectory.get('inputs')[:])  # torch.Size([100, 6])
+#         return eatv, ja
+#
+#     def __len__(self):
+#         return len(self.trajectories_names_list)
 
 
 # if __name__ == '__main__':

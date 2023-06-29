@@ -78,9 +78,16 @@ class IKTransformer(BaseModule):
                  drop_path_rate, num_fcs=2, qkv_bias=True, act_cfg=None, norm_cfg=None, batch_first=True):
         super(IKTransformer, self).__init__()
 
+        # self.eatv_linear_1 = nn.Linear(6, 64)
+        # self.relu1_between_eatv_linear = nn.ReLU()
+        # self.eatv_linear_2 = nn.Linear(64, 128)
+        # self.relu2_between_eatv_linear = nn.ReLU()
+        # self.eatv_linear_3 = nn.Linear(128, embed_dims)
         self.eatv_linear = nn.Linear(6, embed_dims)
 
         self.pe = PositionalEncoding(embed_dims, tra_length)
+
+        # self.learned_pe = nn.Parameter(torch.zeros(1, tra_length, embed_dims))  # 可学习的位置编码
 
         self.transformer_layers = ModuleList()
         for i in range(num_layers):
@@ -95,9 +102,20 @@ class IKTransformer(BaseModule):
         self.js_linear = nn.Linear(embed_dims, 6)
 
     def forward(self, eatv):
+        # eatv_embedding = self.eatv_linear_3(
+        #     self.relu2_between_eatv_linear(
+        #         self.eatv_linear_2(
+        #             self.relu1_between_eatv_linear(
+        #                 self.eatv_linear_1(eatv)
+        #             )
+        #         )
+        #     )
+        # )
         eatv_embedding = self.eatv_linear(eatv)
 
         eatv_embedding = self.pe(eatv_embedding)
+
+        # eatv_embedding = eatv_embedding + self.learned_pe  # 加入可学习的位置编码
 
         for index, tr_layer in enumerate(self.transformer_layers):
             eatv_embedding = tr_layer(eatv_embedding)
